@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador POS · Escáner móvil</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#1a1f2e; --panel:#222839; --panel-2:#283047; --line:#343d56;
+    --text:#e3e6ee; --muted:#8c94a9; --accent:#6d62ec; --accent-hi:#8b81ff;
+    --orange:#f5a04a; --ok:#34c889; --bad:#ec5b5b; --warn:#e8b54a;
+    --font:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%}
+  body{background:var(--bg);color:var(--text);font:13px/1.45 var(--font)}
+  button,input{font:inherit;color:inherit}
+  button{cursor:pointer}
+  :focus-visible{outline:2px solid var(--accent-hi);outline-offset:2px}
+
+  .nav{display:flex;gap:4px;padding:8px 12px;background:#161a27;border-bottom:1px solid var(--line);overflow-x:auto}
+  .nav span{padding:6px 12px;border-radius:6px;color:#c6cad6;white-space:nowrap}
+  .nav span.on{background:var(--accent);color:#fff}
+  .tabs{display:flex;justify-content:flex-end;gap:26px;padding:12px 20px 0;border-bottom:1px solid var(--line);overflow-x:auto}
+  .tabs span{padding:8px 2px;font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap}
+  .tabs span.on{color:var(--accent-hi);border-bottom:2px solid var(--accent)}
+
+  .layout{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:14px;padding:14px;align-items:start}
+  @media (max-width:1050px){.layout{grid-template-columns:1fr}}
+
+  .field{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:9px 12px;min-width:0}
+  input.field:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(109,98,236,.25)}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .grow{flex:1}
+
+  .searchbar{display:flex;border-radius:6px;transition:box-shadow .2s}
+  .searchbar input{border-radius:6px 0 0 6px;flex:1;font-family:var(--mono);letter-spacing:.02em}
+  .btn{border:0;border-radius:6px;padding:9px 16px;font-weight:600;font-size:12px}
+  .btn-accent{background:var(--accent);color:#fff}
+  .btn-accent:hover{background:var(--accent-hi)}
+  .btn-orange{background:var(--orange);color:#2a1a05}
+  .btn-ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+  .btn-ghost:hover{border-color:var(--muted)}
+  .btn-bad{background:transparent;border:1px solid var(--bad);color:var(--bad)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .searchbar .btn-accent{border-radius:0}
+  .searchbar .btn-orange{border-radius:0 6px 6px 0}
+  .searchbar.flash-ok{box-shadow:0 0 0 3px rgba(52,200,137,.55)}
+  .searchbar.flash-bad{box-shadow:0 0 0 3px rgba(236,91,91,.6)}
+
+  .table-wrap{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow-x:auto;margin-top:10px}
+  table{width:100%;border-collapse:collapse;min-width:720px}
+  th{font-size:11px;font-weight:700;text-align:left;padding:10px;border-bottom:1px solid var(--line);color:#cfd3de;white-space:nowrap}
+  td{padding:8px 10px;border-bottom:1px solid rgba(52,61,86,.6);white-space:nowrap}
+  th.num,td.num{text-align:right}
+  td.prod{white-space:normal}
+  td.prod small{display:block;color:var(--muted);font-family:var(--mono);font-size:11px}
+  tr.nuevo td{animation:nuevo 1.2s ease-out}
+  @keyframes nuevo{from{background:rgba(109,98,236,.28)}to{background:transparent}}
+  .qty{width:64px;text-align:right;padding:5px 8px}
+  .x{background:none;border:0;color:var(--muted);font-size:16px;padding:2px 6px;border-radius:4px}
+  .x:hover{color:var(--bad);background:rgba(236,91,91,.12)}
+  .empty td{padding:60px 10px;text-align:center;color:var(--muted);white-space:normal}
+  .totals{display:flex;justify-content:flex-end;gap:28px;padding:14px 4px 0;font-size:14px}
+  .totals b{font-size:20px}
+
+  .side{display:flex;flex-direction:column;gap:14px}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+  .box h2{font-size:14px;margin:0 0 10px;font-weight:600}
+  .box p.hint{margin:0 0 12px;color:var(--muted)}
+  label{display:block;font-size:12px;color:var(--muted);margin:0 0 4px}
+  .grid3{display:grid;grid-template-columns:1fr 84px;gap:8px;margin-bottom:8px}
+  .grid3 .field,.pin .field{width:100%}
+  .pin{margin-bottom:12px}
+  .pin input{font-family:var(--mono);letter-spacing:.3em}
+
+  .status{display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:6px;background:var(--panel-2);margin-bottom:12px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none}
+  .status[data-s="conectado"] .dot{background:var(--ok);box-shadow:0 0 0 4px rgba(52,200,137,.18)}
+  .status[data-s="conectando"] .dot,.status[data-s="reconectando"] .dot{background:var(--warn);animation:pulse 1s infinite}
+  .status[data-s="error"] .dot{background:var(--bad)}
+  @keyframes pulse{50%{opacity:.35}}
+  .status small{display:block;color:var(--muted)}
+  .last{margin-top:10px;font-size:12px;color:var(--muted)}
+  .last code{font-family:var(--mono);color:var(--text)}
+
+  .codes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .code{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:8px;display:flex;flex-direction:column;gap:6px}
+  .code button.bc{background:#fff;border:0;border-radius:4px;padding:4px;line-height:0}
+  .code button.bc svg{width:100%;height:auto}
+  .code .n{font-size:12px;line-height:1.3}
+  .code .n.miss{color:var(--bad)}
+  .code .btn{padding:5px 8px;font-size:11px}
+
+  .log{font-family:var(--mono);font-size:11px;max-height:230px;overflow:auto;background:#171b28;border-radius:6px;padding:8px;border:1px solid var(--line)}
+  .log div{padding:2px 0;word-break:break-all}
+  .log .in{color:#8fd3ff}.log .out{color:#c7b8ff}.log .sys{color:var(--muted)}.log .err{color:var(--bad)}
+
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--panel-2);border:1px solid var(--line);border-left:4px solid var(--accent);padding:11px 16px;border-radius:6px;box-shadow:0 8px 30px rgba(0,0,0,.35);transition:.25s;pointer-events:none;max-width:90vw;z-index:20}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.ok{border-left-color:var(--ok)}.toast.bad{border-left-color:var(--bad)}
+
+  .modal{position:fixed;inset:0;background:rgba(8,10,18,.8);display:none;align-items:center;justify-content:center;padding:20px;z-index:30}
+  .modal.open{display:flex}
+  .modal .inner{background:#fff;border-radius:10px;padding:26px;width:min(560px,100%);text-align:center;color:#111}
+  .modal svg{width:100%;height:auto}
+  .modal p{margin:12px 0 0;font-weight:600}
+  .modal small{display:block;color:#666;margin-top:4px}
+
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<nav class="nav" aria-label="Menú">
+  <span>Escritorio</span><span>Inventarios</span><span>Compras</span><span class="on">Ventas</span>
+  <span>Transf. - Rec.</span><span>Almacenes</span><span>Caja</span><span>Reportes</span><span>Configuración</span>
+</nav>
+<div class="tabs"><span class="on">NUEVA VENTA</span><span>PEDIDOS/ECOMMERCE</span><span>LISTA DE VENTAS</span></div>
+
+<div class="layout">
+  <main>
+    <div class="row">
+      <div class="field grow">10002 - 99002 - CONTROL TRIBUTARIO</div>
+      <div class="field" id="fecha" style="min-width:150px"></div>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <div class="searchbar grow" id="searchbar">
+        <input class="field" id="codigo" placeholder="Código Barras (Esc)" autocomplete="off" aria-label="Código de barras">
+        <button class="btn btn-accent" id="btnBuscar">BUSCAR (F9)</button>
+        <button class="btn btn-orange" aria-label="Más opciones">…</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th class="num">STOCK</th><th class="num">CANTIDAD</th><th>U.M</th><th>PRODUCTO</th>
+          <th class="num">PRECIO</th><th class="num">DESCUENTO</th><th class="num">DTO.(%)</th><th class="num">SUBTOTAL</th><th></th>
+        </tr></thead>
+        <tbody id="lineas"></tbody>
+      </table>
+    </div>
+    <div class="totals">
+      <span>Ítems: <b id="tItems">0</b></span>
+      <span>Total: <b id="tTotal">Bs 0.00</b></span>
+    </div>
+  </main>
+
+  <aside class="side">
+    <section class="box" aria-labelledby="hEsc">
+      <h2 id="hEsc">Escáner móvil</h2>
+      <div class="status" id="status" data-s="desconectado" role="status" aria-live="polite">
+        <span class="dot"></span>
+        <div><span id="stTxt">Desconectado</span><small id="stSub">Escribe la IP y el PIN que muestra la app</small></div>
+      </div>
+      <div class="grid3">
+        <div><label for="ip">IP del celular</label><input class="field" id="ip" placeholder="192.168.1.45" inputmode="decimal"></div>
+        <div><label for="port">Puerto</label><input class="field" id="port" value="8765" inputmode="numeric"></div>
+      </div>
+      <div class="pin"><label for="pin">PIN</label><input class="field" id="pin" maxlength="6" placeholder="000000" inputmode="numeric"></div>
+      <div class="row">
+        <button class="btn btn-accent grow" id="btnCon">Conectar</button>
+        <button class="btn btn-bad" id="btnDes" disabled>Desconectar</button>
+      </div>
+      <div class="last" id="last">Aún no se recibió ningún código.</div>
+    </section>
+
+    <section class="box" aria-labelledby="hCod">
+      <h2 id="hCod">Códigos de prueba</h2>
+      <p class="hint">Toca un código para ampliarlo y escanéalo desde la pantalla. El último no existe en el catálogo, sirve para probar el error.</p>
+      <div class="codes" id="codes"></div>
+    </section>
+
+    <section class="box" aria-labelledby="hLog">
+      <div class="row" style="justify-content:space-between;margin-bottom:10px">
+        <h2 id="hLog" style="margin:0">Registro de mensajes</h2>
+        <button class="btn btn-ghost" id="btnLog" style="padding:4px 10px">Limpiar</button>
+      </div>
+      <div class="log" id="log"></div>
+    </section>
+  </aside>
+</div>
+
+<div class="toast" id="toast" role="alert"></div>
+<div class="modal" id="modal"><div class="inner" id="modalInner"></div></div>
+
+<script>
+/* ============ Utilidades ============ */
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const bs = n => 'Bs ' + n.toFixed(2);
+const hora = () => new Date().toLocaleTimeString('es-BO', {hour12:false});
+
+function checkDigit(b12){
+  let s = 0;
+  for (let i = 0; i < 12; i++) s += Number(b12[i]) * (i % 2 === 0 ? 1 : 3);
+  return String((10 - s % 10) % 10);
+}
+
+/* ============ Catálogo simulado ============ */
+const BASE = [
+  ['777100000011','Gaseosa cola 2 L','UND',14.00,48],
+  ['777100000028','Leche entera 1 L','UND',7.50,120],
+  ['777100000035','Arroz 1 kg','KG',9.00,85],
+  ['777100000042','Aceite vegetal 900 ml','UND',16.50,40],
+  ['777100000059','Azúcar 1 kg','KG',6.80,64],
+  ['777100000066','Fideo tallarín 400 g','UND',5.20,90],
+  ['777100000073','Café molido 250 g','UND',22.00,18],
+];
+const CATALOGO = new Map();
+BASE.forEach(([b, nombre, um, precio, stock]) => {
+  const codigo = b + checkDigit(b);
+  CATALOGO.set(codigo, {codigo, nombre, um, precio, stock});
+});
+const INEXISTENTE = '777999999990' + checkDigit('777999999990');
+
+/* ============ EAN-13 en SVG (para escanear desde la pantalla) ============ */
+const L = ['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
+const G = ['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111'];
+const R = ['1110010','1100110','1101100','1000010','1011100','1001110','1010000','1000100','1001000','1110100'];
+const PAR = ['LLLLLL','LLGLGG','LLGGLG','LLGGGL','LGLLGG','LGGLLG','LGGGLL','LGLGLG','LGLGGL','LGGLGL'];
+
+function eanSVG(code){
+  const d = code.split('').map(Number);
+  let bits = '101';
+  for (let i = 1; i <= 6; i++) bits += (PAR[d[0]][i-1] === 'L' ? L : G)[d[i]];
+  bits += '01010';
+  for (let i = 7; i <= 12; i++) bits += R[d[i]];
+  bits += '101';
+  const q = 11, h = 58, w = bits.length + q * 2;
+  let rects = '';
+  for (let i = 0; i < bits.length;) {
+    if (bits[i] === '1') {
+      let j = i; while (j < bits.length && bits[j] === '1') j++;
+      const guarda = i < 3 || (i >= 45 && i < 50) || i >= 92;
+      rects += `<rect x="${i+q}" y="3" width="${j-i}" height="${guarda ? h : h-7}"/>`;
+      i = j;
+    } else i++;
+  }
+  const t = `font-family="monospace" font-size="8.5" text-anchor="middle"`;
+  return `<svg viewBox="0 0 ${w} ${h+12}" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" role="img" aria-label="Código ${code}">
+    <rect width="${w}" height="${h+12}" fill="#fff"/><g fill="#000">${rects}</g>
+    <g fill="#000" ${t}><text x="5" y="${h+9}">${code[0]}</text>
+    <text x="${q+24}" y="${h+9}">${code.slice(1,7)}</text><text x="${q+71}" y="${h+9}">${code.slice(7)}</text></g></svg>`;
+}
+
+function pintarCodigos(){
+  const items = [...CATALOGO.values()].map(p => ({codigo:p.codigo, nombre:p.nombre, miss:false}));
+  items.push({codigo:INEXISTENTE, nombre:'Código inexistente', miss:true});
+  $('codes').innerHTML = items.map(it => `
+    <div class="code">
+      <button class="bc" data-amp="${it.codigo}" data-n="${esc(it.nombre)}" aria-label="Ampliar ${esc(it.nombre)}">${eanSVG(it.codigo)}</button>
+      <div class="n ${it.miss ? 'miss' : ''}">${esc(it.nombre)}</div>
+      <button class="btn btn-ghost" data-sim="${it.codigo}">Simular lectura</button>
+    </div>`).join('');
+}
+
+$('codes').addEventListener('click', e => {
+  const amp = e.target.closest('[data-amp]');
+  const sim = e.target.closest('[data-sim]');
+  if (amp) {
+    $('modalInner').innerHTML = eanSVG(amp.dataset.amp) + `<p>${amp.dataset.n}</p><small>Escanéalo con la app. Toca fuera para cerrar.</small>`;
+    $('modal').classList.add('open');
+  }
+  if (sim) { $('codigo').value = sim.dataset.sim; buscar(sim.dataset.sim, 1, 'local'); }
+});
+$('modal').addEventListener('click', () => $('modal').classList.remove('open'));
+
+/* ============ Venta ============ */
+let lineas = [];   // {codigo, cantidad}
+let ultimoAgregado = null;
+
+function buscar(valor, cantidad = 1, origen = 'teclado'){
+  const codigo = String(valor || '').trim();
+  const input = $('codigo');
+  if (!codigo) { input.focus(); return {ok:false, mensaje:'Código vacío'}; }
+  const p = CATALOGO.get(codigo);
+  if (!p) {
+    flash('bad');
+    toast(`Código ${codigo} no encontrado`, 'bad');
+    input.select();
+    return {ok:false, mensaje:'Código no encontrado'};
+  }
+  const cant = Math.max(1, parseInt(cantidad, 10) || 1);
+  const l = lineas.find(x => x.codigo === codigo);
+  if (l) l.cantidad += cant; else lineas.push({codigo, cantidad:cant});
+  ultimoAgregado = codigo;
+  render();
+  flash('ok');
+  if (origen === 'remoto') toast(`${p.nombre} ×${cant} agregado desde el celular`, 'ok');
+  input.value = '';
+  input.focus();
+  return {ok:true, producto:p.nombre, precio:p.precio};
+}
+
+function render(){
+  const tb = $('lineas');
+  if (!lineas.length) {
+    tb.innerHTML = `<tr class="empty"><td colspan="9">Escanea con el celular o escribe un código y presiona Enter.</td></tr>`;
+  } else {
+    tb.innerHTML = lineas.map((l, i) => {
+      const p = CATALOGO.get(l.codigo);
+      return `<tr class="${l.codigo === ultimoAgregado ? 'nuevo' : ''}">
+        <td class="num">${p.stock}</td>
+        <td class="num"><input class="field qty" type="number" min="1" value="${l.cantidad}" data-i="${i}" aria-label="Cantidad"></td>
+        <td>${p.um}</td>
+        <td class="prod">${esc(p.nombre)}<small>${p.codigo}</small></td>
+        <td class="num">${p.precio.toFixed(2)}</td>
+        <td class="num">0.00</td><td class="num">0</td>
+        <td class="num">${(p.precio * l.cantidad).toFixed(2)}</td>
+        <td><button class="x" data-del="${i}" aria-label="Quitar">×</button></td></tr>`;
+    }).join('');
+  }
+  ultimoAgregado = null;
+  const items = lineas.reduce((a, l) => a + l.cantidad, 0);
+  const total = lineas.reduce((a, l) => a + CATALOGO.get(l.codigo).precio * l.cantidad, 0);
+  $('tItems').textContent = items;
+  $('tTotal').textContent = bs(total);
+}
+
+$('lineas').addEventListener('change', e => {
+  if (e.target.dataset.i !== undefined) {
+    lineas[e.target.dataset.i].cantidad = Math.max(1, parseInt(e.target.value, 10) || 1);
+    render();
+  }
+});
+$('lineas').addEventListener('click', e => {
+  const d = e.target.closest('[data-del]');
+  if (d) { lineas.splice(Number(d.dataset.del), 1); render(); }
+});
+
+let flashT;
+function flash(tipo){
+  const sb = $('searchbar');
+  sb.classList.remove('flash-ok','flash-bad');
+  void sb.offsetWidth;
+  sb.classList.add('flash-' + tipo);
+  clearTimeout(flashT);
+  flashT = setTimeout(() => sb.classList.remove('flash-ok','flash-bad'), 700);
+}
+let toastT;
+function toast(msg, tipo = ''){
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + tipo;
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.className = 'toast', 2600);
+}
+
+/* Atajos como en el sistema real: Esc enfoca, Enter y F9 buscan */
+$('codigo').addEventListener('keydown', e => { if (e.key === 'Enter') buscar($('codigo').value); });
+$('btnBuscar').addEventListener('click', () => buscar($('codigo').value));
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if ($('modal').classList.contains('open')) { $('modal').classList.remove('open'); return; }
+    $('codigo').focus(); $('codigo').select();
+  }
+  if (e.key === 'F9') { e.preventDefault(); buscar($('codigo').value); }
+});
+
+/* ============ Registro ============ */
+function log(tipo, texto){
+  const el = $('log');
+  const div = document.createElement('div');
+  div.className = tipo;
+  const pref = {in:'◀ ', out:'▶ ', sys:'· ', err:'✕ '}[tipo] || '';
+  div.textContent = `${hora()} ${pref}${texto}`;
+  el.appendChild(div);
+  while (el.children.length > 200) el.firstChild.remove();
+  el.scrollTop = el.scrollHeight;
+}
+$('btnLog').addEventListener('click', () => $('log').innerHTML = '');
+
+/* ============ Cliente WebSocket ============ */
+let ws = null, cierreManual = false, intentos = 0;
+let tReintento = null, tPing = null, ultimoPong = 0;
+let cfg = {ip:'', port:'8765', pin:''};
+
+function setEstado(s, txt, sub = ''){
+  $('status').dataset.s = s;
+  $('stTxt').textContent = txt;
+  $('stSub').textContent = sub;
+  const activo = s === 'conectado' || s === 'conectando' || s === 'reconectando';
+  $('btnCon').disabled = activo;
+  $('btnDes').disabled = !activo;
+}
+
+function enviar(obj){
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const s = JSON.stringify(obj);
+    ws.send(s);
+    if (obj.tipo !== 'ping') log('out', s);
+  }
+}
+
+function limpiarTimers(){
+  clearTimeout(tReintento); clearInterval(tPing);
+  tReintento = null; tPing = null;
+}
+
+function conectar(){
+  cfg = {ip:$('ip').value.trim(), port:$('port').value.trim() || '8765', pin:$('pin').value.trim()};
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(cfg.ip)) { toast('Escribe una IP válida, por ejemplo 192.168.1.45', 'bad'); $('ip').focus(); return; }
+  if (!/^\d{6}$/.test(cfg.pin)) { toast('El PIN debe tener 6 dígitos', 'bad'); $('pin').focus(); return; }
+  try { localStorage.setItem('escaner-cfg', JSON.stringify(cfg)); } catch(e) {}
+  cierreManual = false; intentos = 0;
+  abrir();
+}
+
+function abrir(){
+  limpiarTimers();
+  const url = `ws://${cfg.ip}:${cfg.port}`;
+  setEstado(intentos ? 'reconectando' : 'conectando', intentos ? 'Reconectando…' : 'Conectando…', url);
+  log('sys', `Abriendo ${url}`);
+  try { ws = new WebSocket(url); }
+  catch (e) { log('err', e.message); programarReintento(); return; }
+
+  ws.onopen = () => {
+    log('sys', 'Socket abierto, enviando PIN');
+    enviar({tipo:'auth', pin:cfg.pin});
+  };
+
+  ws.onmessage = ev => {
+    let m;
+    try { m = JSON.parse(ev.data); } catch { log('err', 'JSON inválido: ' + ev.data); return; }
+    if (m.tipo !== 'pong') log('in', ev.data);
+    switch (m.tipo) {
+      case 'auth_ok':
+        intentos = 0;
+        setEstado('conectado', 'Conectado', m.dispositivo ? `a ${m.dispositivo}` : url);
+        toast('Escáner conectado', 'ok');
+        ultimoPong = Date.now();
+        tPing = setInterval(() => {
+          if (Date.now() - ultimoPong > 25000) { log('err', 'Sin respuesta al ping, reconectando'); ws.close(); return; }
+          enviar({tipo:'ping'});
+        }, 10000);
+        break;
+      case 'auth_error':
+        cierreManual = true;
+        setEstado('error', 'PIN rechazado', m.mensaje || 'Revisa el PIN en la app');
+        ws.close();
+        break;
+      case 'desplazado':
+        cierreManual = true;
+        setEstado('desconectado', 'Desconectado', m.mensaje || 'Otra PC tomó el escáner');
+        break;
+      case 'codigo':
+        recibirCodigo(m);
+        break;
+      case 'pong':
+        ultimoPong = Date.now();
+        break;
+      default:
+        log('sys', `Tipo desconocido: ${m.tipo}`);
+    }
+  };
+
+  ws.onerror = () => log('err', 'Error de conexión (¿misma red wifi? ¿IP y puerto correctos? ¿servidor iniciado?)');
+
+  ws.onclose = ev => {
+    clearInterval(tPing); tPing = null;
+    log('sys', `Socket cerrado (código ${ev.code})`);
+    if (!cierreManual) programarReintento();
+    else if ($('status').dataset.s !== 'error' && $('status').dataset.s !== 'desconectado') setEstado('desconectado', 'Desconectado', '');
+  };
+}
+
+function programarReintento(){
+  const espera = Math.min(1000 * 2 ** intentos, 15000);
+  intentos++;
+  setEstado('reconectando', 'Reconectando…', `Nuevo intento en ${Math.round(espera/1000)} s`);
+  tReintento = setTimeout(abrir, espera);
+}
+
+function desconectar(){
+  cierreManual = true;
+  limpiarTimers();
+  if (ws) ws.close();
+  setEstado('desconectado', 'Desconectado', 'Escribe la IP y el PIN que muestra la app');
+}
+
+function recibirCodigo(m){
+  const valor = String(m.valor || '');
+  $('codigo').value = valor;
+  const r = buscar(valor, m.cantidad || 1, 'remoto');
+  $('last').innerHTML = `Último: <code>${esc(valor)}</code> ×${m.cantidad || 1} ${m.formato ? '(' + esc(m.formato) + ')' : ''} a las ${hora()}`;
+  const resp = {tipo:'resultado', id:m.id, encontrado:r.ok};
+  if (r.ok) { resp.producto = r.producto; resp.precio = r.precio; }
+  else resp.mensaje = r.mensaje;
+  enviar(resp);
+}
+
+$('btnCon').addEventListener('click', conectar);
+$('btnDes').addEventListener('click', desconectar);
+$('pin').addEventListener('keydown', e => { if (e.key === 'Enter') conectar(); });
+
+/* ============ Inicio ============ */
+$('fecha').textContent = new Date().toLocaleDateString('es-BO');
+try {
+  const g = JSON.parse(localStorage.getItem('escaner-cfg') || 'null');
+  if (g) { $('ip').value = g.ip || ''; $('port').value = g.port || '8765'; $('pin').value = g.pin || ''; }
+} catch(e) {}
+pintarCodigos();
+render();
+log('sys', 'Simulador listo. Inicia el servidor en la app y conecta.');
+$('codigo').focus();
+</script>
+</body>
+</html>
