@@ -197,6 +197,8 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>'
 const bs = n => 'Bs ' + n.toFixed(2);
 const hora = () => new Date().toLocaleTimeString('es-BO', {hour12:false});
 
+// Dígito verificador EAN-13: suma ponderada (×1 par, ×3 impar) de los
+// primeros 12 dígitos, redondeada al múltiplo de 10 superior.
 function checkDigit(b12){
   let s = 0;
   for (let i = 0; i < 12; i++) s += Number(b12[i]) * (i % 2 === 0 ? 1 : 3);
@@ -204,6 +206,8 @@ function checkDigit(b12){
 }
 
 /* ============ Catálogo simulado ============ */
+// Cada producto se define con un código de 12 dígitos; el 13° (verificador)
+// se calcula solo, así no hay que mantenerlo a mano al agregar productos.
 const BASE = [
   ['777100000011','Gaseosa cola 2 L','UND',14.00,48],
   ['777100000028','Leche entera 1 L','UND',7.50,120],
@@ -221,19 +225,31 @@ BASE.forEach(([b, nombre, um, precio, stock]) => {
 const INEXISTENTE = '777999999990' + checkDigit('777999999990');
 
 /* ============ EAN-13 en SVG (para escanear desde la pantalla) ============ */
+// Tablas de codificación EAN-13: cada dígito (0-9) se representa con un
+// patrón de 7 bits (1 = barra negra, 0 = espacio blanco).
+// L y G codifican los 6 dígitos de la mitad izquierda, R los 6 de la derecha.
+// Cuál de las dos tablas (L o G) se usa por posición depende del primer
+// dígito del código (tabla PAR), que es como el lector "sabe" ese dígito
+// sin que esté dibujado como barras.
 const L = ['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
 const G = ['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111'];
 const R = ['1110010','1100110','1101100','1000010','1011100','1001110','1010000','1000100','1001000','1110100'];
 const PAR = ['LLLLLL','LLGLGG','LLGGLG','LLGGGL','LGLLGG','LGGLLG','LGGGLL','LGLGLG','LGLGGL','LGGLGL'];
 
+// Genera el SVG de un código de barras EAN-13 a partir de sus 13 dígitos.
 function eanSVG(code){
   const d = code.split('').map(Number);
+  // Estructura del código: guarda inicial (101) + 6 dígitos (L/G según
+  // PAR[d[0]]) + guarda central (01010) + 6 dígitos (R) + guarda final (101).
   let bits = '101';
   for (let i = 1; i <= 6; i++) bits += (PAR[d[0]][i-1] === 'L' ? L : G)[d[i]];
   bits += '01010';
   for (let i = 7; i <= 12; i++) bits += R[d[i]];
   bits += '101';
   const q = 11, h = 58, w = bits.length + q * 2;
+  // Convierte la cadena de bits en rectángulos SVG, fusionando bits
+  // consecutivos en "1" en una sola barra. Las barras guarda (inicio,
+  // centro, fin) se dibujan más largas que las de los dígitos.
   let rects = '';
   for (let i = 0; i < bits.length;) {
     if (bits[i] === '1') {
@@ -274,6 +290,8 @@ $('modal').addEventListener('click', () => $('modal').classList.remove('open'));
 
 /* ============ Venta ============ */
 let lineas = [];   // {codigo, cantidad}
+// Código de la última línea agregada: se usa solo una vez en render() para
+// aplicarle la animación de resaltado ("nuevo") y luego se limpia.
 let ultimoAgregado = null;
 
 function buscar(valor, cantidad = 1, origen = 'teclado'){
@@ -378,6 +396,15 @@ function log(tipo, texto){
 $('btnLog').addEventListener('click', () => $('log').innerHTML = '');
 
 /* ============ Cliente WebSocket ============ */
+// El celular corre un servidor WebSocket (ws://IP:PUERTO) y esta página se
+// conecta como cliente. Protocolo de mensajes JSON, campo "tipo":
+//   → auth        {pin}                        (lo enviamos al abrir el socket)
+//   ← auth_ok     {dispositivo?}                (PIN correcto, ya podemos recibir códigos)
+//   ← auth_error  {mensaje?}                    (PIN incorrecto, se corta la conexión)
+//   ← desplazado  {mensaje?}                    (otra PC tomó el control del escáner)
+//   ← codigo      {id, valor, cantidad?, formato?}  (lectura de un código de barras)
+//   → resultado   {id, encontrado, producto?, precio?, mensaje?}  (respuesta a "codigo")
+//   → ping / ← pong                            (keep-alive cada 10 s, ver abrir())
 let ws = null, cierreManual = false, intentos = 0;
 let tReintento = null, tPing = null, ultimoPong = 0;
 let cfg = {ip:'', port:'8765', pin:''};
@@ -471,6 +498,8 @@ function abrir(){
   };
 }
 
+// Reintenta la conexión con backoff exponencial (1 s, 2 s, 4 s... máx. 15 s)
+// para no saturar la red ni al celular si el servidor tarda en levantar.
 function programarReintento(){
   const espera = Math.min(1000 * 2 ** intentos, 15000);
   intentos++;
